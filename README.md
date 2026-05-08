@@ -24,6 +24,8 @@ Improvements integrated from community forks (Kyzcreig, Patinado, ymat19):
 - **Truncate on retry** — if even the compacted prompt is still too large, it is truncated to prevent infinite retry loops
 - **Session title intercept** — OpenClaw's "generate a 1-2 word filename slug" prompts are intercepted before session routing, so they don't poison per-channel sessions and trap them in title-generation loops
 - **Empty response rejection** — if Claude CLI exits with output_tokens=0 and empty text, the bridge rejects with a clear error instead of silently returning empty content
+- **Persisted scrub maps** — `sessionAliasMap` and `sessionTokenMaps` are saved in `state.json` and restored on startup, so live Claude CLI sessions surviving a bridge restart can still have their scrubbed tokens (`[[<word>_<word>_<hex>]]`) mapped back to the originals
+- **Orphan scrub tag strip** — defensive removal of `[[<word>_<word>_<hex>]]` tags that survive `restoreInbound`, preventing bridge-internal alias text (e.g. `[[sync_proc_9685]]`) from leaking into final responses to OpenClaw
 
 ### Tool Handling
 - **Tool call filtering** — filters out hallucinated tool calls that don't exist in the available tools list, with warning logs
