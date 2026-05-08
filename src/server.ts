@@ -428,6 +428,7 @@ function cleanResponseText(text: string): string {
         .replace(/<tool_call>[\s\S]*?<\/tool_call>/g, '')
         .replace(/<tool_result[\s\S]*?<\/tool_result>/g, '')
         .replace(/<previous_response>[\s\S]*?<\/previous_response>/g, '')
+        .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/gi, '')
         .replace(ORPHAN_SCRUB_TAG_RE, '');
     const parts = stripped.split(/(```[\s\S]*?```)/)
     return parts
@@ -438,7 +439,7 @@ function cleanResponseText(text: string): string {
 
 function hasInternalBridgeMarkup(text: string): boolean {
     if (!text) return false;
-    return /<(?:tool_call|tool_result|tool_thinking|previous_response)\b|<\/(?:tool_call|tool_result|tool_thinking|previous_response)>/i.test(String(text));
+    return /<(?:tool_call|tool_result|tool_thinking|previous_response|system-reminder)\b|<\/(?:tool_call|tool_result|tool_thinking|previous_response|system-reminder)>/i.test(String(text));
 }
 
 function redactSensitivePreview(text: string, maxLen = 400): string {
