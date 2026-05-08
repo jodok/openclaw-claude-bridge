@@ -39,6 +39,31 @@ export function clearSessionAlias(sessionId: string): void {
     sessionTokenMaps.delete(sessionId);
 }
 
+// Snapshot of sessionAliasMap + sessionTokenMaps for persistence across restarts.
+// Without this, after a bridge restart the running CLI sessions still emit the
+// scrubbed tokens (e.g. [[sync_proc_<hex>]]) but the bridge has lost the mapping
+// back to the originals, leaking the alias to OpenClaw.
+export interface SessionMapsSnapshot {
+    aliases: Array<[string, AliasEntry]>;
+    tokens: Array<[string, Array<[string, string]>]>;
+}
+
+export function getSessionMapsSnapshot(): SessionMapsSnapshot {
+    return {
+        aliases: Array.from(sessionAliasMap.entries()),
+        tokens: Array.from(sessionTokenMaps.entries()).map(([sid, m]) => [sid, Array.from(m.entries())]),
+    };
+}
+
+export function loadSessionMapsSnapshot(snap: SessionMapsSnapshot): void {
+    if (snap?.aliases) {
+        for (const [sid, entry] of snap.aliases) sessionAliasMap.set(sid, entry);
+    }
+    if (snap?.tokens) {
+        for (const [sid, entries] of snap.tokens) sessionTokenMaps.set(sid, new Map(entries));
+    }
+}
+
 // Evict stale entries every 10 min (unused >1h)
 setInterval(() => {
     const cutoff = Date.now() - 3600_000;

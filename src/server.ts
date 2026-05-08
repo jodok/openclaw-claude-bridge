@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { convertMessages, convertMessagesCompact, extractNewMessages, extractNewUserMessages } from './convert';
 import { buildToolInstructions, filterToolsByProfile } from './tools';
 import type { Message, ContentPart } from './tools';
-import { runClaude, getContextWindow, clearSessionAlias } from './claude';
+import { runClaude, getContextWindow, clearSessionAlias, getSessionMapsSnapshot, loadSessionMapsSnapshot } from './claude';
 import type { LogEntry, SessionEntry, ChannelEntry, ToolCall as ToolCallType } from './types';
 
 // --- Session cleanup ---
@@ -81,6 +81,7 @@ function saveState(): void {
             responseMap: Array.from(responseMap.entries()),
             requestLog,
             globalActivity,
+            sessionMaps: getSessionMapsSnapshot(),
         };
         const tmp = STATE_FILE + '.tmp';
         fs.writeFileSync(tmp, JSON.stringify(data));
@@ -138,7 +139,16 @@ function loadState(): void {
             globalActivity.push(...data.globalActivity.slice(-MAX_ACTIVITY));
         }
 
-        console.log(`[persist] Loaded: ${restored} channels, ${pruned} pruned (session gone), ${requestLog.length} log entries, ${globalActivity.length} activity`);
+        // Restore session aliases and token maps so scrubbed tokens emitted by
+        // pre-restart Claude CLI sessions can still be mapped back to originals.
+        let restoredAliases = 0, restoredTokenMaps = 0;
+        if (data.sessionMaps) {
+            loadSessionMapsSnapshot(data.sessionMaps);
+            restoredAliases = data.sessionMaps.aliases?.length || 0;
+            restoredTokenMaps = data.sessionMaps.tokens?.length || 0;
+        }
+
+        console.log(`[persist] Loaded: ${restored} channels, ${pruned} pruned (session gone), ${requestLog.length} log entries, ${globalActivity.length} activity, ${restoredAliases} aliases, ${restoredTokenMaps} token maps`);
     } catch (err: any) {
         console.warn(`[persist] Failed to load state: ${err.message}`);
     }
@@ -403,13 +413,22 @@ function filterToolCalls(toolCalls: ParsedToolCall[], availableToolNames: string
     return { valid, invalid };
 }
 
+// Defensive strip of orphan scrub tags. The bridge masks bracket tokens like
+// [[reply_to_current]] outbound as [[<word>_<word>_<hex>]] (see generateReplacement
+// in claude.ts). When restoreInbound fails — typically because the bridge was
+// restarted while a CLI session kept running, losing the in-memory tokenMap —
+// these orphans leak as raw text to OpenClaw, causing visible alias prefixes
+// and breaking reply-tag detection. Strip anything matching the generated shape.
+const ORPHAN_SCRUB_TAG_RE = /\[\[\s*[A-Za-z]+_[A-Za-z]+_[a-f0-9]{4,8}\s*\]\]/g;
+
 function cleanResponseText(text: string): string {
     if (!text) return text;
     const stripped = text
         .replace(/<tool_thinking>[\s\S]*?<\/tool_thinking>/g, '')
         .replace(/<tool_call>[\s\S]*?<\/tool_call>/g, '')
         .replace(/<tool_result[\s\S]*?<\/tool_result>/g, '')
-        .replace(/<previous_response>[\s\S]*?<\/previous_response>/g, '');
+        .replace(/<previous_response>[\s\S]*?<\/previous_response>/g, '')
+        .replace(ORPHAN_SCRUB_TAG_RE, '');
     const parts = stripped.split(/(```[\s\S]*?```)/)
     return parts
         .map((part, idx) => idx % 2 === 0 ? part.replace(/\n{3,}/g, '\n\n') : part)
