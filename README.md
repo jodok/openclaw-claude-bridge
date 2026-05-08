@@ -22,14 +22,19 @@ Improvements integrated from community forks (Kyzcreig, Patinado, ymat19):
 - **Auto-compact prompt** — if a prompt exceeds 600K chars, it is automatically compacted before sending to Claude CLI
 - **Session purge on error** — broken CLI sessions are purged instead of retrying on corrupted state, preventing cascading failures
 - **Truncate on retry** — if even the compacted prompt is still too large, it is truncated to prevent infinite retry loops
+- **Session title intercept** — OpenClaw's "generate a 1-2 word filename slug" prompts are intercepted before session routing, so they don't poison per-channel sessions and trap them in title-generation loops
+- **Empty response rejection** — if Claude CLI exits with output_tokens=0 and empty text, the bridge rejects with a clear error instead of silently returning empty content
 
 ### Tool Handling
 - **Tool call filtering** — filters out hallucinated tool calls that don't exist in the available tools list, with warning logs
 - **Tool profile filtering** — gateway-internal tools are filtered before reaching Claude
 - **Suppress pre-tool text** — in streaming mode, partial assistant prose before tool_calls is suppressed to avoid spurious text during tool loops
+- **Tool call JSON recovery** — re-escapes raw `\n` `\r` `\t` inside JSON string literals so multi-line tool_call payloads parse instead of being dropped
 
 ### Security
 - **`--strict-mcp-config`** — blocks host MCP servers from leaking into the bridge session, preventing context pollution and reducing token usage
+- **Bridge markup fail-closed** — if internal `<tool_call>`/`<tool_result>`/`<tool_thinking>`/`<previous_response>` tags survive parsing, the response is suppressed instead of leaking raw markup to the end user
+- **Sensitive log redaction** — `sk-*` keys, `*_API_KEY=…`, `token=…`, `password=…` are masked in warning previews
 
 ### Reasoning
 - **Reasoning streaming** — Claude's `thinking` blocks are streamed as `reasoning_content` SSE deltas in OpenAI-compatible format, so OpenClaw can surface reasoning previews in real time on Discord/Telegram
@@ -375,7 +380,7 @@ openclaw-claude-bridge/
 ## Credits
 
 Based on [shinglokto/openclaw-claude-bridge](https://github.com/shinglokto/openclaw-claude-bridge). Community improvements from:
-- [Kyzcreig](https://github.com/Kyzcreig/openclaw-claude-bridge) — tool call filtering, MCP isolation, scrub fixes
+- [Kyzcreig](https://github.com/Kyzcreig/openclaw-claude-bridge) — tool call filtering, MCP isolation, scrub fixes, session-title intercept, JSON recovery, markup fail-closed
 - [Patinado](https://github.com/Patinado/openclaw-claude-bridge) — channel serialization, SSE keepalive, error recovery
 - [ymat19](https://github.com/shinglokto/openclaw-claude-bridge/pull/10) — `--strict-mcp-config` PR
 
