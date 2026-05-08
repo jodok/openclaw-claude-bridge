@@ -228,6 +228,31 @@ function extractAgentName(messages: Message[]): string | null {
     return null;
 }
 
+function messageText(msg: Message): string {
+    if (!msg) return '';
+    if (typeof msg.content === 'string') return msg.content;
+    if (Array.isArray(msg.content)) {
+        return msg.content
+            .filter((p: ContentPart) => p && (p.type === 'text' || typeof (p as any).text === 'string'))
+            .map((p: ContentPart) => (p as any).text || '')
+            .join('\n');
+    }
+    return '';
+}
+
+// OpenClaw periodically asks the model for a short filename slug to title
+// sessions. If proxied into a per-channel CLI session it poisons the channel:
+// future real prompts resume the title-generation conversation. Intercept the
+// request before session routing without touching channelMap/responseMap.
+function isSessionTitleSlugRequest(messages: Message[]): boolean {
+    return messages.some((msg) => {
+        if (msg.role !== 'user') return false;
+        const text = messageText(msg).trim();
+        return /^(?:User:\s*)?Based on this conversation, generate a short 1-2 word filename slug\b/i.test(text)
+            || /generate a short 1-2 word filename slug \(lowercase, hyphen-separated, no file extension\)/i.test(text);
+    });
+}
+
 function purgeCliSession(cliSessionId: string): void {
     clearSessionAlias(cliSessionId);
     for (const [key, val] of sessionMap) {
@@ -285,6 +310,41 @@ interface ParsedToolCall {
     arguments: Record<string, unknown>;
 }
 
+// Re-escape unescaped \n \r \t inside JSON string literals so that tool_call
+// payloads with raw newlines (common when Claude emits multi-line code) can
+// still be parsed. Walks the text tracking string/escape state.
+function normalizeJsonish(text: string): string {
+    let out = '';
+    let inString = false;
+    let escape = false;
+    for (const ch of text) {
+        if (escape) { out += ch; escape = false; continue; }
+        if (ch === '\\') { out += ch; escape = true; continue; }
+        if (ch === '"') { out += ch; inString = !inString; continue; }
+        if (inString) {
+            if (ch === '\n') { out += '\\n'; continue; }
+            if (ch === '\r') { out += '\\r'; continue; }
+            if (ch === '\t') { out += '\\t'; continue; }
+        }
+        out += ch;
+    }
+    return out;
+}
+
+function parseLooseJson(jsonText: string): { parsed: any; recovered: boolean } {
+    try {
+        return { parsed: JSON.parse(jsonText), recovered: false };
+    } catch (firstErr) {
+        const normalized = normalizeJsonish(jsonText);
+        if (normalized !== jsonText) {
+            try {
+                return { parsed: JSON.parse(normalized), recovered: true };
+            } catch {}
+        }
+        throw firstErr;
+    }
+}
+
 function parseToolCalls(text: string): ParsedToolCall[] {
     const regex = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g;
     const calls: ParsedToolCall[] = [];
@@ -299,10 +359,13 @@ function parseToolCalls(text: string): ParsedToolCall[] {
         }
         const jsonText = raw.slice(start, end + 1);
         try {
-            const parsed = JSON.parse(jsonText);
+            const { parsed, recovered } = parseLooseJson(jsonText);
             if (!parsed || typeof parsed.name !== 'string') {
                 console.error(`[parseToolCalls] Invalid tool_call payload: ${jsonText.slice(0, 300)}`);
                 continue;
+            }
+            if (recovered) {
+                console.warn(`[parseToolCalls] Recovered malformed tool_call JSON for ${parsed.name}`);
             }
             const args = (parsed.arguments && typeof parsed.arguments === 'object' && !Array.isArray(parsed.arguments))
                 ? parsed.arguments
@@ -352,6 +415,21 @@ function cleanResponseText(text: string): string {
         .map((part, idx) => idx % 2 === 0 ? part.replace(/\n{3,}/g, '\n\n') : part)
         .join('')
         .trim();
+}
+
+function hasInternalBridgeMarkup(text: string): boolean {
+    if (!text) return false;
+    return /<(?:tool_call|tool_result|tool_thinking|previous_response)\b|<\/(?:tool_call|tool_result|tool_thinking|previous_response)>/i.test(String(text));
+}
+
+function redactSensitivePreview(text: string, maxLen = 400): string {
+    if (!text) return '';
+    return String(text)
+        .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, 'sk-***')
+        .replace(/\b(OPENAI_API_KEY|ANTHROPIC_API_KEY|OPENROUTER_API_KEY|DEEPSEEK_API_KEY)\b\s*[:=]\s*[^\s"']+/gi, '$1=***')
+        .replace(/\b(token|api[_-]?key|secret|password)\b\s*[:=]\s*[^\s,}\]"']+/gi, '$1=***')
+        .slice(0, maxLen)
+        .replace(/\n/g, '\\n');
 }
 // ─── API app (port 3456, localhost only) ──────────────────────────────────────
 const app = express();
@@ -442,6 +520,25 @@ app.post('/v1/chat/completions', async (req: Request, res: Response) => {
             logEntry.promptLen = promptLen;
             logEntry.durationMs = Date.now() - startTime;
             pushActivity(requestId, `🧹 memflush intercepted (${Math.round(promptLen/1000)}K chars)`);
+            return res.json({
+                id: `chatcmpl-${requestId}`,
+                object: 'chat.completion',
+                created: Math.floor(Date.now() / 1000),
+                model,
+                choices: [{ index: 0, message: { role: 'assistant', content: 'NO_REPLY' }, finish_reason: 'stop' }],
+                usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+            });
+        }
+
+        // Session title slug interception (must run before session routing)
+        if (isSessionTitleSlugRequest(messages)) {
+            const promptLen = messages.reduce((s: number, m: Message) => s + messageText(m).length, 0);
+            console.warn(`[${requestId}] SESSION TITLE intercepted: tools=${tools.length} promptLen≈${promptLen}, returning NO_REPLY without session routing`);
+            logEntry.status = 'ok';
+            logEntry.resumeMethod = 'session_title_intercept';
+            logEntry.promptLen = promptLen;
+            logEntry.durationMs = Date.now() - startTime;
+            pushActivity(requestId, '🏷️ session title intercepted');
             return res.json({
                 id: `chatcmpl-${requestId}`,
                 object: 'chat.completion',
@@ -928,8 +1025,15 @@ app.post('/v1/chat/completions', async (req: Request, res: Response) => {
                 });
             }
         } else {
-            // No tool calls — return clean text with finish_reason: stop
-            const cleanText = cleanResponseText(finalText);
+            // No tool calls — return clean text with finish_reason: stop.
+            // Fail closed if raw bridge markup somehow survives parsing.
+            let cleanText = cleanResponseText(finalText);
+            if (hasInternalBridgeMarkup(finalText || '')) {
+                console.warn(`[${requestId}] WARNING suppressed_internal_bridge_markup preview=${redactSensitivePreview(finalText || '')}`);
+                pushActivity(requestId, '⚠ suppressed bridge markup leak');
+                logEntry.activity.push('⚠ suppressed bridge markup leak');
+                cleanText = '';
+            }
             if (cleanText) sendChunk(cleanText);
 
             if (isStream) {

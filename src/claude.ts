@@ -320,9 +320,13 @@ export function runClaude(
                 } catch {}
             }
 
-            if (code !== 0 && !fullText) {
-                const stderrTail = stderrLines.length > 0 ? ` | stderr: ${stderrLines.slice(-5).join(' | ')}` : '';
+            const trimmed = typeof fullText === 'string' ? fullText.trim() : '';
+            const stderrTail = stderrLines.length > 0 ? ` | stderr: ${stderrLines.slice(-5).join(' | ')}` : '';
+
+            if (code !== 0 && !trimmed) {
                 reject(new Error(`Claude exited with code ${code}${stderrTail}`));
+            } else if (!trimmed && (fullUsage.output_tokens ?? 0) === 0) {
+                reject(new Error(`Claude returned empty response${stderrTail}`));
             } else {
                 if (fullText) {
                     fullText = restoreInbound(fullText, alias, aliasLower, sessionId);
