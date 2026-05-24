@@ -1,6 +1,7 @@
 import { spawn, ChildProcessWithoutNullStreams } from 'child_process';
 import crypto from 'crypto';
 import type { ClaudeResult, ClaudeUsage } from './types';
+import { NOSCRUB_OPEN, NOSCRUB_CLOSE } from './convert';
 
 const CLAUDE_BIN = process.env.CLAUDE_BIN || 'claude';
 
@@ -207,6 +208,45 @@ function restoreInbound(text: string, alias: string, aliasLower: string, session
     return text;
 }
 
+// Apply brand substitution (OpenClaw → alias) to all regions of `text` EXCEPT
+// those wrapped in NOSCRUB_OPEN/NOSCRUB_CLOSE sentinels emitted by convert.ts
+// around <tool_call> and <tool_result> blocks. Sentinels are stripped from the
+// returned string so Claude CLI never sees them. systemPrompt continues through
+// the full scrubOutbound() pass — it contains no tool-call blocks.
+function brandSubstituteWithSkipRegions(text: string, alias: string, aliasLower: string): string {
+    if (!text) return text;
+    const apply = (chunk: string): string => chunk
+        .replace(/OpenClaw/g, alias)
+        .replace(/openclaw/g, aliasLower);
+    if (!text.includes(NOSCRUB_OPEN)) {
+        return apply(text);
+    }
+    const out: string[] = [];
+    let i = 0;
+    while (i < text.length) {
+        const openIdx = text.indexOf(NOSCRUB_OPEN, i);
+        if (openIdx === -1) {
+            out.push(apply(text.slice(i)));
+            break;
+        }
+        if (openIdx > i) {
+            out.push(apply(text.slice(i, openIdx)));
+        }
+        const closeIdx = text.indexOf(NOSCRUB_CLOSE, openIdx + NOSCRUB_OPEN.length);
+        if (closeIdx === -1) {
+            // Malformed pair — fail safe by brand-substituting the remainder
+            // with the open marker stripped, so brand strings never leak
+            // unsubstituted when the structure is broken.
+            out.push(apply(text.slice(openIdx + NOSCRUB_OPEN.length)));
+            break;
+        }
+        // Pass the no-scrub region through verbatim, sentinels stripped.
+        out.push(text.slice(openIdx + NOSCRUB_OPEN.length, closeIdx));
+        i = closeIdx + NOSCRUB_CLOSE.length;
+    }
+    return out.join('');
+}
+
 export function runClaude(
     systemPrompt: string | undefined,
     promptText: string,
@@ -222,9 +262,7 @@ export function runClaude(
     if (systemPrompt) {
         systemPrompt = scrubOutbound(systemPrompt, alias, aliasLower, sessionId);
     }
-    promptText = promptText
-        .replace(/OpenClaw/g, alias)
-        .replace(/openclaw/g, aliasLower);
+    promptText = brandSubstituteWithSkipRegions(promptText, alias, aliasLower);
 
     return new Promise((resolve, reject) => {
         const model = resolveModel(modelId);

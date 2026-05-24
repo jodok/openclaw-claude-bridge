@@ -37,6 +37,7 @@ Improvements integrated from community forks (Kyzcreig, Patinado, ymat19):
 - **`--strict-mcp-config`** — blocks host MCP servers from leaking into the bridge session, preventing context pollution and reducing token usage
 - **Bridge markup fail-closed** — if internal `<tool_call>`/`<tool_result>`/`<tool_thinking>`/`<previous_response>`/`<system-reminder>` tags survive parsing, the response is suppressed instead of leaking raw markup to the end user
 - **Strip `<system-reminder>` blocks** — Claude Code CLI sometimes echoes its internal `<system-reminder>` notes (e.g. user email, current date, task hints) in assistant output; the bridge strips these before they can reach OpenClaw
+- **Tool-payload scrub skip** — `<tool_call>` and `<tool_result>` blocks are wrapped in non-printable `NOSCRUB` sentinels so the outbound brand substitution (`OpenClaw → alias`) never rewrites filesystem paths, command output, or identifiers inside tool args/payloads; without this, an agent issuing `ls /Users/x/.openclaw/...` would execute `ls /Users/x/.<alias>/...` on disk
 - **Sensitive log redaction** — `sk-*` keys, `*_API_KEY=…`, `token=…`, `password=…` are masked in warning previews
 
 ### Reasoning

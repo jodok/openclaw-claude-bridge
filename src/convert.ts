@@ -2,6 +2,20 @@
 
 import type { Message, ContentPart } from './tools';
 
+// Sentinel markers that delimit regions of promptText which must NOT be
+// brand-substituted. Tool-call JSON arguments and tool-result payloads contain
+// literal data the orchestrator owns — filesystem paths, command output,
+// identifiers — that round-trips back from Claude to OpenClaw. Substituting
+// `OpenClaw → alias` inside those regions silently corrupts on-disk reality
+// (e.g. `ls /Users/x/.openclaw/...` becomes `ls /Users/x/.<alias>/...`).
+// Markers are built from control char codes so they themselves can never be
+// substituted by the brand pass.
+export const NOSCRUB_OPEN = String.fromCharCode(0x1E) + 'NOSCRUB' + String.fromCharCode(0x1F);
+export const NOSCRUB_CLOSE = String.fromCharCode(0x1F) + 'NOSCRUB' + String.fromCharCode(0x1E);
+function noscrub(text: string): string {
+    return NOSCRUB_OPEN + text + NOSCRUB_CLOSE;
+}
+
 export interface ConvertedMessages {
     systemPrompt: string;
     promptText: string;
@@ -47,7 +61,7 @@ export function convertMessages(messages: Message[]): ConvertedMessages {
             if (Array.isArray(msg.tool_calls)) {
                 for (const tc of msg.tool_calls) {
                     const fn = tc.function || {};
-                    parts.push(`<tool_call>\n{"name": "${fn.name}", "arguments": ${fn.arguments || '{}'}}\n</tool_call>`);
+                    parts.push(noscrub(`<tool_call>\n{"name": "${fn.name}", "arguments": ${fn.arguments || '{}'}}\n</tool_call>`));
                 }
             }
 
@@ -59,7 +73,7 @@ export function convertMessages(messages: Message[]): ConvertedMessages {
             const toolName = msg.name || '';
             const toolId = msg.tool_call_id || '';
             if (content) {
-                conversationParts.push(`<tool_result name="${toolName}" tool_call_id="${toolId}">\n${content}\n</tool_result>`);
+                conversationParts.push(noscrub(`<tool_result name="${toolName}" tool_call_id="${toolId}">\n${content}\n</tool_result>`));
             }
         }
     }
@@ -124,7 +138,7 @@ export function extractNewMessages(messages: Message[], opts: ExtractOptions = {
                 if (content.length > toolResultCap) {
                     content = content.slice(0, toolResultCap) + '\n[... truncated]';
                 }
-                parts.push(`<tool_result name="${toolName}" tool_call_id="${toolId}">\n${content}\n</tool_result>`);
+                parts.push(noscrub(`<tool_result name="${toolName}" tool_call_id="${toolId}">\n${content}\n</tool_result>`));
             }
         } else if (msg.role === 'user') {
             parts.push(`User: ${extractContent(msg.content)}`);
@@ -168,7 +182,7 @@ export function extractNewUserMessages(messages: Message[], opts: ExtractOptions
                 if (content.length > toolResultCap) {
                     content = content.slice(0, toolResultCap) + '\n[... truncated]';
                 }
-                parts.push(`<tool_result name="${toolName}" tool_call_id="${toolId}">\n${content}\n</tool_result>`);
+                parts.push(noscrub(`<tool_result name="${toolName}" tool_call_id="${toolId}">\n${content}\n</tool_result>`));
             }
         }
     }
@@ -219,7 +233,7 @@ export function convertMessagesCompact(messages: Message[], opts: CompactOptions
             if (Array.isArray(msg.tool_calls)) {
                 for (const tc of msg.tool_calls) {
                     const fn = tc.function || {};
-                    parts.push(`<tool_call>\n{"name": "${fn.name}", "arguments": ${fn.arguments || '{}'}}\n</tool_call>`);
+                    parts.push(noscrub(`<tool_call>\n{"name": "${fn.name}", "arguments": ${fn.arguments || '{}'}}\n</tool_call>`));
                 }
             }
             if (parts.length > 0) {
@@ -231,7 +245,7 @@ export function convertMessagesCompact(messages: Message[], opts: CompactOptions
             if (content) {
                 const cap = currentUserTurn >= recentCutoff ? recentToolCap : oldToolCap;
                 const truncated = content.length > cap ? content.slice(0, cap) + '\n[... truncated]' : content;
-                conversationParts.push(`<tool_result name="${toolName}" tool_call_id="${toolId}">\n${truncated}\n</tool_result>`);
+                conversationParts.push(noscrub(`<tool_result name="${toolName}" tool_call_id="${toolId}">\n${truncated}\n</tool_result>`));
             }
         }
     }
