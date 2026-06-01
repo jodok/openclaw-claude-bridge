@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+dist/
 
 # Environment — contains secrets (DASHBOARD_PASS), never commit
 .env

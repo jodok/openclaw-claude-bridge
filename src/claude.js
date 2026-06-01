@@ -48,13 +48,12 @@ setInterval(() => {
 
 /**
  * Map OpenClaw model IDs to Claude CLI model names.
- * Uses CLI aliases (opus/sonnet/haiku) by default so we always get the latest
- * model without code changes.  Override via env vars in .env if needed,
- * e.g. OPUS_MODEL=opus[1m] when 1M context becomes available.
+ * Pin Opus to 4.8 by default so the bridge does not depend on provider-specific
+ * alias resolution. Override via env vars in .env if needed.
  */
 function resolveModel(modelId) {
     const modelMap = {
-        'claude-opus-latest':    process.env.OPUS_MODEL   || 'opus',
+        'claude-opus-latest':    process.env.OPUS_MODEL   || 'claude-opus-4-8',
         'claude-sonnet-latest':  process.env.SONNET_MODEL || 'sonnet',
         'claude-haiku-latest':   process.env.HAIKU_MODEL  || 'haiku',
     };
@@ -91,10 +90,10 @@ function mapEffort(reasoningEffort) {
     if (!reasoningEffort) return null;
     const map = {
         'minimal': 'low',
-        'low':     'medium',
-        'medium':  'high',
-        'high':    'max',
-        'xhigh':   'max',
+        'low':     'low',
+        'medium':  'medium',
+        'high':    'high',
+        'xhigh':   'xhigh',
     };
     return map[reasoningEffort] || null;
 }

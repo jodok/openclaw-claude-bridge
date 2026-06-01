@@ -111,7 +111,7 @@ cat > "$PLIST_PATH" <<PLIST
     <key>ProgramArguments</key>
     <array>
         <string>${NODE_BIN}</string>
-        <string>src/index.js</string>
+        <string>dist/index.js</string>
     </array>
 
     <key>WorkingDirectory</key>

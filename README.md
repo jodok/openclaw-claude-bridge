@@ -84,7 +84,7 @@ OpenClaw speaks the OpenAI API format. Claude Code CLI speaks its own format. Th
 ## Quick Start
 
 ```bash
-# 1. Clone and install (also builds the dashboard automatically)
+# 1. Clone and install (also builds the bridge and dashboard automatically)
 git clone https://github.com/adfdev/openclaw-claude-bridge.git
 cd openclaw-claude-bridge
 npm install
@@ -162,7 +162,8 @@ The bridge supports Claude's extended thinking via the `reasoning_effort` parame
 | *(not set)* | *(default)* | Thinking OFF |
 | `minimal` / `low` | `low` | Quick intuition |
 | `medium` | `medium` | Moderate reasoning |
-| `high` / `xhigh` | `high` | Deep step-by-step |
+| `high` | `high` | Deep step-by-step |
+| `xhigh` | `xhigh` | Deeper reasoning on Opus 4.8 |
 
 When `reasoning_effort` is not provided, thinking is disabled entirely (`MAX_THINKING_TOKENS=0`).
 
@@ -212,13 +213,13 @@ For detailed architecture of the dashboard, see [docs/architecture.md](docs/arch
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `DASHBOARD_PASS` | No | — | Dashboard password (Basic Auth, user: `admin`) |
-| `OPUS_MODEL` | No | `opus` | CLI model alias for Opus (use `opus[1m]` for 1M context) |
+| `OPUS_MODEL` | No | `claude-opus-4-8` | CLI model name for Opus (use `claude-opus-4-8[1m]` for 1M context, or `opus` to follow the CLI alias) |
 | `SONNET_MODEL` | No | `sonnet` | CLI model alias for Sonnet (use `sonnet[1m]` for 1M context) |
 | `HAIKU_MODEL` | No | `haiku` | CLI model alias for Haiku |
 | `IDLE_TIMEOUT_MS` | No | `120000` | Kill CLI subprocess after this many ms of no output |
 | `OPENCLAW_BRIDGE_PORT` | No | `3456` | API server port |
 | `OPENCLAW_BRIDGE_STATUS_PORT` | No | `3458` | Dashboard port |
-| `CLAUDE_BIN` | No | `claude` | Path to Claude Code CLI binary |
+| `CLAUDE_BIN` | No | `claude` | Path to Claude Code CLI binary. Claude Opus 4.8 requires Claude Code v2.1.154 or newer. |
 | `MAX_GLOBAL` | No | `20` | Max concurrent requests globally |
 
 > **Note:** `MAX_PER_CHANNEL` is no longer configurable — channels are serialized (1 request at a time) to prevent session duplication.

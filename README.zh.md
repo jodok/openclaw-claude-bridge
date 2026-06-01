@@ -42,7 +42,7 @@ OpenClaw 使用 OpenAI API 格式。Claude Code CLI 使用自己的格式。這�
 ## 快速開始
 
 ```bash
-# 1. Clone 並安裝（會自動 build Dashboard）
+# 1. Clone 並安裝（會自動 build Bridge 和 Dashboard）
 git clone https://github.com/shinglokto/openclaw-claude-bridge.git
 cd openclaw-claude-bridge
 npm install
@@ -110,7 +110,8 @@ Bridge 透過 `reasoning_effort` 參數支援 Claude 的延伸思考：
 | *（未設定）* | *（預設）* | 思考關閉 |
 | `minimal` / `low` | `low` | 快速直覺 |
 | `medium` | `medium` | 中等推理 |
-| `high` / `xhigh` | `high` | 深度逐步推理 |
+| `high` | `high` | 深度逐步推理 |
+| `xhigh` | `xhigh` | Opus 4.8 的更深推理 |
 
 當 `reasoning_effort` 未提供時，思考會完全關閉（`MAX_THINKING_TOKENS=0`）。
 
@@ -147,13 +148,13 @@ Dashboard 詳細架構請參閱 [docs/architecture.md](docs/architecture.md#dash
 | 變數名 | 必填 | 預設值 | 說明 |
 |---|---|---|---|
 | `DASHBOARD_PASS` | 否 | — | Dashboard 密碼（Basic Auth，用戶名：`admin`） |
-| `OPUS_MODEL` | 否 | `opus` | Opus 的 CLI 模型別名 |
+| `OPUS_MODEL` | 否 | `claude-opus-4-8` | Opus 的 CLI 模型名稱（可用 `claude-opus-4-8[1m]` 啟用 1M context，或用 `opus` 跟隨 CLI alias） |
 | `SONNET_MODEL` | 否 | `sonnet` | Sonnet 的 CLI 模型別名 |
 | `HAIKU_MODEL` | 否 | `haiku` | Haiku 的 CLI 模型別名 |
 | `IDLE_TIMEOUT_MS` | 否 | `120000` | Claude CLI 無輸出超過此毫秒數後終止 |
 | `OPENCLAW_BRIDGE_PORT` | 否 | `3456` | API 伺服器端口 |
 | `OPENCLAW_BRIDGE_STATUS_PORT` | 否 | `3458` | Dashboard 端口 |
-| `CLAUDE_BIN` | 否 | `claude` | Claude Code CLI 路徑 |
+| `CLAUDE_BIN` | 否 | `claude` | Claude Code CLI 路徑。Claude Opus 4.8 需要 Claude Code v2.1.154 或更新版本。 |
 | `MAX_PER_CHANNEL` | 否 | `2` | 每個 channel 最大同時請求數 |
 | `MAX_GLOBAL` | 否 | `20` | 全局最大同時請求數 |
 

@@ -288,7 +288,7 @@ claude --print \
   --dangerously-skip-permissions \
   --output-format stream-json \
   --verbose \
-  --model opus \
+  --model claude-opus-4-8 \
   --session-id <uuid> \          # or --resume <uuid>
   --system-prompt "<prompt>" \   # REPLACES default, not appends
   --tools ""                     # disables ALL native tools
@@ -299,7 +299,7 @@ claude --print \
 | `--print` | Non-interactive mode — read stdin, write stdout, exit | Bridge is a headless proxy, no terminal |
 | `--output-format stream-json` | Structured JSON events instead of raw text | Lets us parse token usage, result events, and errors programmatically |
 | `--verbose` | Include detailed events in the stream | Captures thinking status, tool activity for the dashboard |
-| `--model <alias>` | Select Claude model (opus/sonnet/haiku) | Passed on every invocation; not persisted in session |
+| `--model <alias|name>` | Select Claude model (`claude-opus-4-8` by default, or opus/sonnet/haiku aliases) | Passed on every invocation; not persisted in session |
 | `--session-id <uuid>` | Create a new session with a specific ID | Bridge controls session lifecycle, not the CLI |
 | `--resume <uuid>` | Resume an existing session | Conversation history already on disk; only new messages sent via stdin |
 | `--system-prompt` | **Replace** the default system prompt entirely | See below |
